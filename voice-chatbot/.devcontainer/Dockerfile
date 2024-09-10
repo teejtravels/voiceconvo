@@ -2,7 +2,7 @@
 FROM mcr.microsoft.com/vscode/devcontainers/javascript-node:18
 
 # Set the working directory in the container
-WORKDIR /workspace
+WORKDIR /workspaces
 
 # Copy package.json and install dependencies
 COPY package.json package-lock.json ./

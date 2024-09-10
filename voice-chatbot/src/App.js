@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ReactMic } from 'react-mic';
 import axios from 'axios';
-import VAD from 'web-audio-vad';
+import VAD from 'webrtc-vad-wrapper';
 
 function App() {
   const [isRecording, setIsRecording] = useState(false);
