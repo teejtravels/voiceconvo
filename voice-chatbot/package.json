@@ -9,10 +9,10 @@
     "axios": "^1.7.7",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-mic": "^12.4.6",
+    "react-18-mic": "^18.0.0",
     "react-scripts": "^5.0.1",
     "web-vitals": "^2.1.4",
-    "webrtc-vad-wrapper": "^0.0.3" 
+    "@ricky0123/vad": "^0.0.18"
 
   },
   "scripts": {
