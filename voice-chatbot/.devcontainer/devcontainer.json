@@ -1,0 +1,13 @@
+{
+    "name": "Voice Chatbot Development Environment",
+    "dockerFile": "Dockerfile",
+    "postCreateCommand": "npm install",
+    "customizations": {
+      "vscode": {
+        "settings": {
+          "terminal.integrated.defaultProfile.linux": "bash"
+        }
+      }
+    }
+  }
+  
