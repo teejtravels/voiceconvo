@@ -1,14 +1,13 @@
 {
-    "name": "Voice Chatbot Development Environment",
-    "dockerFile": "Dockerfile",
-    "workspaceFolder": "/workspaces/voiceconvo/voice-chatbot",
-    "postCreateCommand": "npm install",
-    "customizations": {
-      "vscode": {
-        "settings": {
-          "terminal.integrated.defaultProfile.linux": "bash"
-        }
+  "name": "Voice Chatbot Development Environment",
+  "dockerFile": "Dockerfile",
+  "workspaceFolder": "/workspaces/voiceconvo/voice-chatbot",
+  "postCreateCommand": "yarn install",  // Changed from npm to yarn
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash"
       }
     }
   }
-  
+}

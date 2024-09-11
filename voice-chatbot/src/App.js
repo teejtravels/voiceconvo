@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ReactMic } from 'react-18-mic';
 import axios from 'axios';
-import VAD from '@ricky0123/vad';
+import VAD from 'vad';  // Import vad.js
 
 function App() {
   const [isRecording, setIsRecording] = useState(false);
@@ -10,24 +10,25 @@ function App() {
   const [responseAudioUrl, setResponseAudioUrl] = useState('');
   const [audioContext, setAudioContext] = useState(null);
   const [stream, setStream] = useState(null);
+  const [vadInstance, setVadInstance] = useState(null);
 
   useEffect(() => {
-    if (audioContext && stream) {
-      const analyser = audioContext.createAnalyser();
-      const microphone = audioContext.createMediaStreamSource(stream);
-      const vad = VAD(audioContext, { source: microphone });
-
-      vad.on('speech', () => {
+    const vad = new VAD({
+      onVoiceStart: () => {
         console.log('Speech detected');
         startRecording();
-      });
-
-      vad.on('silence', () => {
+      },
+      onVoiceStop: () => {
         console.log('Silence detected');
         stopRecording();
-      });
-    }
-  }, [audioContext, stream]);
+      }
+    });
+    setVadInstance(vad);
+
+    return () => {
+      if (vadInstance) vadInstance.destroy();
+    };
+  }, [audioContext, stream, vadInstance]);
 
   const initializeMic = async () => {
     const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -47,7 +48,6 @@ function App() {
     const formData = new FormData();
     formData.append('file', audioBlob, 'audio.webm');
 
-    // Replace this URL with the one from your Make.com webhook
     fetch('https://your-make-webhook-url', {
       method: 'POST',
       body: formData,
@@ -55,7 +55,7 @@ function App() {
       .then(response => response.json())
       .then(data => {
         setResponseText(data.transcription);
-        setResponseAudioUrl(data.audioUrl);  // Assuming you get an audio URL back
+        setResponseAudioUrl(data.audioUrl);
       })
       .catch(error => console.error('Error:', error));
   };
@@ -67,7 +67,7 @@ function App() {
 
   return (
     <div className="App">
-      <h1>Voice Chatbot</h1>
+      <h1>Voice Chatbot with VAD</h1>
       <button onClick={initializeMic}>Initialize Mic</button>
       <button onClick={isRecording ? stopRecording : startRecording}>
         {isRecording ? 'Stop Recording' : 'Start Recording'}
