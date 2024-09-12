@@ -1,63 +1,95 @@
-import React, { useState, useEffect } from 'react';
-import { ReactMic } from 'react-18-mic';
+import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
-import VAD from 'vad';  // Import vad.js
 
 function App() {
+  const [isListening, setIsListening] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
-  const [audioBlob, setAudioBlob] = useState(null);
   const [responseText, setResponseText] = useState('');
   const [responseAudioUrl, setResponseAudioUrl] = useState('');
-  const [audioContext, setAudioContext] = useState(null);
-  const [stream, setStream] = useState(null);
-  const [vadInstance, setVadInstance] = useState(null);
+
+  const audioContext = useRef(null);
+  const analyser = useRef(null);
+  const mediaRecorder = useRef(null);
+  const audioChunks = useRef([]);
 
   useEffect(() => {
-    const vad = new VAD({
-      onVoiceStart: () => {
-        console.log('Speech detected');
-        startRecording();
-      },
-      onVoiceStop: () => {
-        console.log('Silence detected');
-        stopRecording();
-      }
-    });
-    setVadInstance(vad);
-
     return () => {
-      if (vadInstance) vadInstance.destroy();
+      if (audioContext.current) {
+        audioContext.current.close();
+      }
     };
-  }, [audioContext, stream, vadInstance]);
+  }, []);
 
   const initializeMic = async () => {
-    const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    setStream(micStream);
-    setAudioContext(new AudioContext());
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioContext.current = new (window.AudioContext || window.webkitAudioContext)();
+      analyser.current = audioContext.current.createAnalyser();
+      const source = audioContext.current.createMediaStreamSource(stream);
+      source.connect(analyser.current);
+
+      mediaRecorder.current = new MediaRecorder(stream);
+      mediaRecorder.current.ondataavailable = (event) => {
+        audioChunks.current.push(event.data);
+      };
+      mediaRecorder.current.onstop = sendAudioToWebhook;
+
+      setIsListening(true);
+      detectSound();
+    } catch (error) {
+      console.error('Error initializing microphone:', error);
+    }
   };
 
-  const startRecording = () => setIsRecording(true);
-  const stopRecording = () => setIsRecording(false);
+  const detectSound = () => {
+    if (!isListening) return;
 
-  const onStop = (recordedBlob) => {
-    setAudioBlob(recordedBlob.blob);
-    sendAudioToWebhook(recordedBlob.blob);
+    const bufferLength = analyser.current.frequencyBinCount;
+    const dataArray = new Uint8Array(bufferLength);
+    analyser.current.getByteFrequencyData(dataArray);
+
+    const average = dataArray.reduce((a, b) => a + b) / bufferLength;
+
+    if (average > 10) {  // Adjust this threshold as needed
+      if (!isRecording) {
+        startRecording();
+      }
+    } else {
+      if (isRecording) {
+        stopRecording();
+      }
+    }
+
+    requestAnimationFrame(detectSound);
   };
 
-  const sendAudioToWebhook = (audioBlob) => {
+  const startRecording = () => {
+    audioChunks.current = [];
+    mediaRecorder.current.start();
+    setIsRecording(true);
+    console.log('Recording started');
+  };
+
+  const stopRecording = () => {
+    mediaRecorder.current.stop();
+    setIsRecording(false);
+    console.log('Recording stopped');
+  };
+
+  const sendAudioToWebhook = async () => {
+    const audioBlob = new Blob(audioChunks.current, { type: 'audio/webm' });
     const formData = new FormData();
     formData.append('file', audioBlob, 'audio.webm');
 
-    fetch('https://your-make-webhook-url', {
-      method: 'POST',
-      body: formData,
-    })
-      .then(response => response.json())
-      .then(data => {
-        setResponseText(data.transcription);
-        setResponseAudioUrl(data.audioUrl);
-      })
-      .catch(error => console.error('Error:', error));
+    try {
+      const response = await axios.post('https://your-make-webhook-url', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      setResponseText(response.data.transcription);
+      setResponseAudioUrl(response.data.audioUrl);
+    } catch (error) {
+      console.error('Error sending audio to webhook:', error);
+    }
   };
 
   const playResponseAudio = () => {
@@ -67,18 +99,11 @@ function App() {
 
   return (
     <div className="App">
-      <h1>Voice Chatbot with VAD</h1>
-      <button onClick={initializeMic}>Initialize Mic</button>
-      <button onClick={isRecording ? stopRecording : startRecording}>
-        {isRecording ? 'Stop Recording' : 'Start Recording'}
+      <h1>Voice Chatbot with VAD and Recording</h1>
+      <button onClick={initializeMic} disabled={isListening}>
+        {isListening ? 'Mic Initialized' : 'Initialize Mic'}
       </button>
-      <ReactMic
-        record={isRecording}
-        onStop={onStop}
-        mimeType="audio/webm"
-        strokeColor="#000000"
-        backgroundColor="#FF4081"
-      />
+      <p>{isRecording ? 'Recording...' : 'Not recording'}</p>
       <div>
         {responseText && <p>Chatbot Response: {responseText}</p>}
         {responseAudioUrl && (

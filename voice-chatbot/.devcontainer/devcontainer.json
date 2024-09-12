@@ -2,7 +2,7 @@
   "name": "Voice Chatbot Development Environment",
   "dockerFile": "Dockerfile",
   "workspaceFolder": "/workspaces/voiceconvo/voice-chatbot",
-  "postCreateCommand": "yarn install",  // Changed from npm to yarn
+  "postCreateCommand": "yarn install",
   "customizations": {
     "vscode": {
       "settings": {
