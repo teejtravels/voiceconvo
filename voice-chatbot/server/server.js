@@ -60,35 +60,35 @@ function checkPortInUse(port, callback) {
 }
 
 // Start ngrok
-async function startNgrok(port) {
-  const ngrokToken = process.env.NGROK_AUTHTOKEN;
-  if (!ngrokToken) {
-    console.error('NGROK_AUTHTOKEN is not set in the environment variables.');
-    return null;
-  }
+//async function startNgrok(port) {
+  //const ngrokToken = process.env.NGROK_AUTHTOKEN;
+  //if (!ngrokToken) {
+    //console.error('NGROK_AUTHTOKEN is not set in the environment variables.');
+//    return null;
+  //}
 
-  try {
-    await ngrok.authtoken(ngrokToken);
-    const url = await ngrok.connect({
-      addr: port,
-      region: 'us', // or your preferred region
-    });
-    console.log(`Ngrok tunnel established at: ${url}`);
-    console.log(`Use this URL for your Make.com webhook: ${url}/upload-audio`);
-    return url;
-  } catch (err) {
-    console.error('Error while connecting to ngrok:', err);
-    return null;
-  }
-}
+  //try {
+    //await ngrok.authtoken(ngrokToken);
+    //const url = await ngrok.connect({
+      //addr: port,
+      //region: 'us', // or your preferred region
+    //});
+    //console.log(`Ngrok tunnel established at: ${url}`);
+    //console.log(`Use this URL for your Make.com webhook: ${url}/upload-audio`);
+    //return url;
+  //} catch (err) {
+    //console.error('Error while connecting to ngrok:', err);
+    //return null;
+  //}
+//}
 
 // Start the server
 checkPortInUse(port, async (isInUse) => {
   if (isInUse) {
     console.log(`Port ${port} is already in use. Please close any other instances.`);
   } else {
-    app.listen(port, async () => {
-      console.log(`Server running on http://localhost:${port}`);
+    app.listen(port, '0.0.0.0', async () => {
+      console.log(`Server running on http://0.0.0.0:${port}`);
       
       // Start ngrok after the server is running
       const ngrokUrl = await startNgrok(port);
