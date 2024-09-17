@@ -2,12 +2,17 @@
   "name": "Voice Chatbot Development Environment",
   "dockerFile": "Dockerfile",
   "workspaceFolder": "/workspaces/voiceconvo/voice-chatbot",
-  "postCreateCommand": "yarn install",
+  "postCreateCommand": "yarn install:all",
+  "forwardPorts": [3000, 3001, 4040],
   "customizations": {
     "vscode": {
       "settings": {
         "terminal.integrated.defaultProfile.linux": "bash"
-      }
+      },
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode"
+      ]
     }
   }
 }

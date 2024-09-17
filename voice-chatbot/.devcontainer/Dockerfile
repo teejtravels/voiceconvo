@@ -7,14 +7,19 @@ RUN npm install -g yarn
 # Set the working directory in the container
 WORKDIR /workspaces/voiceconvo/voice-chatbot
 
-# Copy package.json to install dependencies with Yarn
+# Copy package.json files
 COPY package.json ./
+COPY voice-chatbot/package.json ./voice-chatbot/
+COPY server/package.json ./server/
 
-# Install dependencies using Yarn
-RUN yarn install
+# Install dependencies
+RUN yarn install:all
 
 # Copy the rest of the project files
 COPY . .
 
-# Expose the port that React runs on (3000 for Create React App)
-EXPOSE 3000
+# Expose ports for React and Express
+EXPOSE 3000 3001
+
+# Start both frontend and backend
+CMD ["yarn", "start"]

@@ -1,109 +1,97 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 
 function App() {
   const [isListening, setIsListening] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
+  const [recognizedText, setRecognizedText] = useState('');
   const [responseText, setResponseText] = useState('');
   const [responseAudioUrl, setResponseAudioUrl] = useState('');
-
-  const audioContext = useRef(null);
-  const analyser = useRef(null);
-  const mediaRecorder = useRef(null);
-  const audioChunks = useRef([]);
+  const audioRef = useRef(null)
+  const recognitionRef = useRef(null);
 
   useEffect(() => {
+    if ('webkitSpeechRecognition' in window) {
+      recognitionRef.current = new window.webkitSpeechRecognition();
+      recognitionRef.current.continuous = true;
+      recognitionRef.current.interimResults = true;
+
+      recognitionRef.current.onresult = (event) => {
+        const transcript = Array.from(event.results)
+          .map(result => result[0].transcript)
+          .join('');
+        setRecognizedText(transcript);
+      };
+
+      recognitionRef.current.onerror = (event) => {
+        console.error('Speech recognition error', event.error);
+        setIsListening(false);
+      };
+
+      recognitionRef.current.onend = () => {
+        setIsListening(false);
+      };
+    } else {
+      console.log('Speech recognition not supported');
+    }
+
     return () => {
-      if (audioContext.current) {
-        audioContext.current.close();
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
       }
     };
   }, []);
 
-  const initializeMic = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      audioContext.current = new (window.AudioContext || window.webkitAudioContext)();
-      analyser.current = audioContext.current.createAnalyser();
-      const source = audioContext.current.createMediaStreamSource(stream);
-      source.connect(analyser.current);
-
-      mediaRecorder.current = new MediaRecorder(stream);
-      mediaRecorder.current.ondataavailable = (event) => {
-        audioChunks.current.push(event.data);
-      };
-      mediaRecorder.current.onstop = sendAudioToWebhook;
-
-      setIsListening(true);
-      detectSound();
-    } catch (error) {
-      console.error('Error initializing microphone:', error);
+  useEffect(() => {
+    if (responseAudioUrl) {
+      audioRef.current.src = responseAudioUrl;
+      audioRef.current.play().catch(error => console.error('Audio playback error:', error));
     }
-  };
+  }, [responseAudioUrl]);
 
-  const detectSound = () => {
-    if (!isListening) return;
-
-    const bufferLength = analyser.current.frequencyBinCount;
-    const dataArray = new Uint8Array(bufferLength);
-    analyser.current.getByteFrequencyData(dataArray);
-
-    const average = dataArray.reduce((a, b) => a + b) / bufferLength;
-
-    if (average > 10) {  // Adjust this threshold as needed
-      if (!isRecording) {
-        startRecording();
-      }
+  const toggleListening = useCallback(() => {
+    if (isListening) {
+      recognitionRef.current.stop();
+      sendTextToLLM(recognizedText);
     } else {
-      if (isRecording) {
-        stopRecording();
-      }
+      setRecognizedText('');
+      recognitionRef.current.start();
     }
+    setIsListening(!isListening);
+  }, [isListening, recognizedText]);
 
-    requestAnimationFrame(detectSound);
-  };
-
-  const startRecording = () => {
-    audioChunks.current = [];
-    mediaRecorder.current.start();
-    setIsRecording(true);
-    console.log('Recording started');
-  };
-
-  const stopRecording = () => {
-    mediaRecorder.current.stop();
-    setIsRecording(false);
-    console.log('Recording stopped');
-  };
-
-  const sendAudioToWebhook = async () => {
-    const audioBlob = new Blob(audioChunks.current, { type: 'audio/webm' });
-    const formData = new FormData();
-    formData.append('file', audioBlob, 'audio.webm');
-
+  const sendTextToLLM = async (text) => {
     try {
-      const response = await axios.post('https://your-make-webhook-url', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
-      setResponseText(response.data.transcription);
+      const response = await axios.post(
+        'https://hook.us2.make.com/qovbee1r63m1i3imuupp9ujiaij5z3yd',
+        { text },
+        {
+          headers:{
+            'content-type': 'application/json',
+          },
+        }
+      );
+      setResponseText(response.data.responseText);
       setResponseAudioUrl(response.data.audioUrl);
     } catch (error) {
-      console.error('Error sending audio to webhook:', error);
+      console.error('Error sending text to LLM:', error);
+      alert('Failed to process text.');
     }
   };
-
-  const playResponseAudio = () => {
-    const audio = new Audio(responseAudioUrl);
-    audio.play();
-  };
+// this might be duplicated
+  const playResponseAudio = useCallback(() => {
+    if (responseAudioUrl) {
+      const audio = new Audio(responseAudioUrl);
+      audio.play();
+    }
+  }, [responseAudioUrl]);
 
   return (
     <div className="App">
-      <h1>Voice Chatbot with VAD and Recording</h1>
-      <button onClick={initializeMic} disabled={isListening}>
-        {isListening ? 'Mic Initialized' : 'Initialize Mic'}
+      <h1>Speech-to-Text Chatbot</h1>
+      <button onClick={toggleListening}>
+        {isListening ? 'Stop Listening' : 'Start Listening'}
       </button>
-      <p>{isRecording ? 'Recording...' : 'Not recording'}</p>
+      <p>Recognized Text: {recognizedText}</p>
       <div>
         {responseText && <p>Chatbot Response: {responseText}</p>}
         {responseAudioUrl && (
