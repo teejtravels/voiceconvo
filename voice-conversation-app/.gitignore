@@ -1,0 +1,9 @@
+
+// .gitignore
+node_modules
+.env
+.env.local
+build
+dist
+*.log
+.DS_Store

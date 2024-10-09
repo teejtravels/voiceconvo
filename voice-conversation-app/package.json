@@ -1,0 +1,11 @@
+// package.json (root directory)
+{
+  "name": "voice-conversation-app",
+  "version": "1.0.0",
+  "scripts": {
+    "start": "concurrently \"npm run server\" \"npm run client\"",
+    "server": "cd backend && node src/server.js",
+    "client": "cd frontend && npm start",
+    "install-all": "npm install && cd frontend && npm install && cd ../backend && npm install"
+  }
+}
