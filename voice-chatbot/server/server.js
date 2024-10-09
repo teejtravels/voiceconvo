@@ -91,10 +91,10 @@ checkPortInUse(port, async (isInUse) => {
       console.log(`Server running on http://0.0.0.0:${port}`);
       
       // Start ngrok after the server is running
-      const ngrokUrl = await startNgrok(port);
-      if (!ngrokUrl) {
-        console.log('Failed to establish ngrok tunnel. The server is still running locally.');
-      }
+      //const ngrokUrl = await startNgrok(port);
+      //if (!ngrokUrl) {
+        //console.log('Failed to establish ngrok tunnel. The server is still running locally.');
+      //}
     });
   }
 });
