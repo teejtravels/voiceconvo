@@ -106,17 +106,21 @@ const App = () => {
     }
   }, [transcript, isListening]);
 
-  const sendToBackend = async (text) => {
-    try {
-      const { data } = await axios.post('http://localhost:5000/api/conversation', { text });
-      setResponse(data.response);
-      // Here you would trigger your custom voice response
-      // playCustomVoiceResponse(data.response);
-    } catch (error) {
-      console.error('Backend error:', error);
-      setError(`Failed to get response: ${error.message}`);
-    }
-  };
+// Update sendToBackend function
+const sendToBackend = async (text) => {
+  try {
+    const { data } = await axios.post('http://localhost:5000/api/conversation', {
+      text,
+      userId: conversationId
+    });
+    setResponse(data.response);
+    // Here you would trigger your custom voice response
+    // await playCustomVoiceResponse(data.response);
+  } catch (error) {
+    console.error('Backend error:', error);
+    setError(`Failed to get response: ${error.message}`);
+  }
+};
 
   const toggleListening = useCallback(async () => {
     try {
@@ -144,6 +148,30 @@ const App = () => {
       }
     }
   }, [isListening, initializeSpeechRecognition]);
+
+  // adding user profile : 
+const [conversationId, setConversationId] = useState('default');
+const [userProfile, setUserProfile] = useState({
+  name: 'User',
+  preferences: [],
+  memoryTopics: []
+});
+
+
+// Add function to update user profile
+const updateUserProfile = async (profile) => {
+  try {
+    await axios.post('http://localhost:5000/api/user/profile', {
+      userId: conversationId,
+      profile
+    });
+    setUserProfile(profile);
+  } catch (error) {
+    console.error('Profile update error:', error);
+  }
+};
+
+
 
   // Cleanup on unmount
   useEffect(() => {
