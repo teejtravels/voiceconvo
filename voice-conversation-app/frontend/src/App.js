@@ -1,16 +1,72 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import axios from 'axios';
 
+// Config for backend URL
+const getBackendUrl = () => {
+  const codespaceUrl = window.location.hostname;
+  return `https://${codespaceUrl.replace('-3000', '-5000')}`;
+};
+
+const API_URL = getBackendUrl();
+
 const App = () => {
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [response, setResponse] = useState('');
   const [error, setError] = useState('');
+  const [conversationId] = useState('default');
+  const [userProfile, setUserProfile] = useState({
+    name: 'User',
+    preferences: [],
+    memoryTopics: []
+  });
+  
   const recognitionRef = useRef(null);
   const timeoutRef = useRef(null);
+  const transcriptRef = useRef('');  // Add this to track transcript across callbacks
 
-  // Initialize speech recognition
+  const sendToBackend = async (text) => {
+    try {
+      console.log('Attempting to send to backend:', text);
+      if (!text?.trim()) {
+        console.log('Empty text, skipping backend call');
+        return;
+      }
+
+      console.log(`Sending POST request to ${API_URL}/api/conversation`);
+      const response = await axios.post(`${API_URL}/api/conversation`, {
+        text: text.trim(),
+        userId: conversationId
+      });
+      
+      console.log('Backend response received:', response.data);
+      if (response.data.success) {
+        setResponse(response.data.response);
+      } else {
+        throw new Error(response.data.error || 'Unknown error from backend');
+      }
+    } catch (error) {
+      console.error('Backend communication error:', error);
+      setError(`Failed to get response: ${error.message}`);
+      console.log('Full error object:', error);
+    }
+  };
+
+  const updateUserProfile = async (profile) => {
+    try {
+      const response = await axios.post(`${API_URL}/api/user/profile`, {
+        userId: conversationId,
+        profile
+      });
+      console.log('Profile update response:', response.data);
+      setUserProfile(profile);
+    } catch (error) {
+      console.error('Profile update error:', error);
+      setError(`Failed to update profile: ${error.message}`);
+    }
+  };
+
   const initializeSpeechRecognition = useCallback(() => {
     try {
       if (!window.webkitSpeechRecognition && !window.SpeechRecognition) {
@@ -20,32 +76,30 @@ const App = () => {
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
       const recognition = new SpeechRecognition();
 
-      // Configure recognition settings
       recognition.continuous = true;
       recognition.interimResults = true;
       recognition.lang = 'en-US';
 
-      // Speech detection events
       recognition.onspeechstart = () => {
         console.log('Speech detected');
         setIsSpeaking(true);
-        // Clear any existing timeout
         if (timeoutRef.current) {
           clearTimeout(timeoutRef.current);
         }
       };
 
       recognition.onspeechend = () => {
-        console.log('Speech ended');
-        // Add a small delay before setting isSpeaking to false to handle brief pauses
-        timeoutRef.current = setTimeout(() => {
+        console.log('Speech ended, current transcript:', transcriptRef.current);
+        timeoutRef.current = setTimeout(async () => {
           setIsSpeaking(false);
-          // Send the accumulated transcript to backend
-          if (transcript.trim()) {
-            sendToBackend(transcript);
+          const currentTranscript = transcriptRef.current;
+          if (currentTranscript?.trim()) {
+            console.log('Sending transcript:', currentTranscript);
+            await sendToBackend(currentTranscript.trim());
+          } else {
+            console.log('No transcript to send');
           }
-          // Clear the transcript for the next utterance
-          setTranscript('');
+          transcriptRef.current = ''; // Clear transcript after sending
         }, 1000);
       };
 
@@ -53,35 +107,35 @@ const App = () => {
         console.log('Recognition started');
         setIsListening(true);
         setError('');
+        transcriptRef.current = ''; // Clear transcript at start
       };
 
       recognition.onend = () => {
         console.log('Recognition ended');
-        // Restart recognition if we're still in listening mode
-        if (isListening) {
-          console.log('Restarting recognition');
-          recognition.start();
-        } else {
-          setIsListening(false);
-        }
+        setIsListening(false);
       };
 
       recognition.onresult = (event) => {
-        // Accumulate transcripts from all results
-        let interimTranscript = '';
+        console.log('Recognition result received:', event);
         let finalTranscript = '';
+        let interimTranscript = '';
 
         for (let i = event.resultIndex; i < event.results.length; i++) {
           const transcript = event.results[i][0].transcript;
           if (event.results[i].isFinal) {
+            console.log('Final transcript:', transcript);
             finalTranscript += transcript;
           } else {
             interimTranscript += transcript;
           }
         }
 
-        // Update the transcript with both final and interim results
-        setTranscript(finalTranscript || interimTranscript);
+        const currentTranscript = finalTranscript || interimTranscript;
+        if (currentTranscript) {
+          console.log('Setting transcript:', currentTranscript);
+          setTranscript(currentTranscript);
+          transcriptRef.current = currentTranscript;
+        }
       };
 
       recognition.onerror = (event) => {
@@ -89,7 +143,6 @@ const App = () => {
         setError(`Speech recognition error: ${event.error}`);
         
         if (event.error === 'no-speech') {
-          // Handle no speech detected
           setIsSpeaking(false);
         } else if (event.error === 'network') {
           setError('Network error occurred. Please check your connection.');
@@ -104,35 +157,19 @@ const App = () => {
       setError(error.message);
       return null;
     }
-  }, [transcript, isListening]);
-
-// Update sendToBackend function
-const sendToBackend = async (text) => {
-  try {
-    const { data } = await axios.post('http://localhost:5000/api/conversation', {
-      text,
-      userId: conversationId
-    });
-    setResponse(data.response);
-    // Here you would trigger your custom voice response
-    // await playCustomVoiceResponse(data.response);
-  } catch (error) {
-    console.error('Backend error:', error);
-    setError(`Failed to get response: ${error.message}`);
-  }
-};
+  }, []);
 
   const toggleListening = useCallback(async () => {
     try {
       if (isListening) {
-        // Stop listening
-        recognitionRef.current?.stop();
+        console.log('Stopping recognition');
+        if (recognitionRef.current) {
+          recognitionRef.current.stop();
+        }
         setIsListening(false);
       } else {
-        // Request microphone permission before starting
+        console.log('Starting recognition');
         await navigator.mediaDevices.getUserMedia({ audio: true });
-        
-        // Initialize and start recognition
         const recognition = initializeSpeechRecognition();
         if (recognition) {
           recognitionRef.current = recognition;
@@ -149,31 +186,6 @@ const sendToBackend = async (text) => {
     }
   }, [isListening, initializeSpeechRecognition]);
 
-  // adding user profile : 
-const [conversationId, setConversationId] = useState('default');
-const [userProfile, setUserProfile] = useState({
-  name: 'User',
-  preferences: [],
-  memoryTopics: []
-});
-
-
-// Add function to update user profile
-const updateUserProfile = async (profile) => {
-  try {
-    await axios.post('http://localhost:5000/api/user/profile', {
-      userId: conversationId,
-      profile
-    });
-    setUserProfile(profile);
-  } catch (error) {
-    console.error('Profile update error:', error);
-  }
-};
-
-
-
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (recognitionRef.current) {

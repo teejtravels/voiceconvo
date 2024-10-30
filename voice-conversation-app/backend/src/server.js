@@ -1,20 +1,40 @@
 const express = require('express');
 const cors = require('cors');
 const { VertexAI } = require('@google-cloud/vertexai');
+const fs = require('fs');
+const path = require('path');
 require('dotenv').config();
 
 const app = express();
 const port = process.env.PORT || 5000;
 
-// Initialize Vertex AI
-const vertex = new VertexAI({
-  project: process.env.GOOGLE_CLOUD_PROJECT,
-  location: process.env.GOOGLE_CLOUD_LOCATION,
-});
-const model = 'chat-bison@002';
+// Initialize Vertex AI with explicit credentials
+let vertexAI;
+try {
+  const credentials = JSON.parse(
+    fs.readFileSync(path.join(__dirname, '../config/google-credentials.json'))
+  );
+
+  vertexAI = new VertexAI({
+    project: process.env.GOOGLE_CLOUD_PROJECT,
+    location: process.env.GOOGLE_CLOUD_LOCATION,
+    googleAuthOptions: {
+      credentials: credentials,
+      projectId: process.env.GOOGLE_CLOUD_PROJECT
+    }
+  });
+  console.log('Vertex AI initialized successfully');
+} catch (error) {
+  console.error('Vertex AI initialization failed:', error);
+  process.exit(1);
+}
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST'],
+  allowedHeaders: ['Content-Type']
+}));
 app.use(express.json());
 
 // Store conversation history (in production, use a proper database)
@@ -60,11 +80,6 @@ Remember: Your goal is to provide companionship and emotional support while main
 friendly conversation flow.
 `;
 
-// Root route
-app.get('/', (req, res) => {
-  res.json({ message: 'Voice Conversation API is running' });
-});
-
 // Health check route
 app.get('/api/health', (req, res) => {
   res.json({ status: 'healthy' });
@@ -73,7 +88,7 @@ app.get('/api/health', (req, res) => {
 // Main conversation endpoint
 app.post('/api/conversation', async (req, res) => {
   try {
-    console.log('Received request:', req.body); // Debug log
+    console.log('Received request:', req.body);
     const { text, userId = 'default' } = req.body;
 
     if (!text) {
@@ -83,65 +98,47 @@ app.post('/api/conversation', async (req, res) => {
       });
     }
 
-    // If Vertex AI is not configured, return echo response for testing
-    if (!process.env.GOOGLE_CLOUD_PROJECT) {
-      console.log('Vertex AI not configured, using echo response');
-      return res.json({
-        success: true,
-        response: `Echo: ${text}`,
-        conversationId: userId
-      });
-    }
-
     const conversation = getOrCreateConversation(userId);
 
-    // Initialize the chat model
-    const generativeModel = vertex.preview.getGenerativeModel({
-      model: model,
-      generation_config: {
-        max_output_tokens: 256,
-        temperature: 0.7,
-        top_p: 0.8,
-        top_k: 40
+    const generativeModel = vertexAI.preview.getGenerativeModel({
+      model: 'gemini-1.5-flash-002',
+      generationConfig: {
+        maxOutputTokens: 8192,
+        temperature: 1,
+        topP: 0.95,
       },
-      safety_settings: [
+      safetySettings: [
         {
-          category: 'HARM_CATEGORY_DANGEROUS',
-          threshold: 'BLOCK_MEDIUM_AND_ABOVE'
+          category: 'HARM_CATEGORY_HATE_SPEECH',
+          threshold: 'OFF',
+        },
+        {
+          category: 'HARM_CATEGORY_DANGEROUS_CONTENT',
+          threshold: 'OFF',
+        },
+        {
+          category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT',
+          threshold: 'OFF',
         },
         {
           category: 'HARM_CATEGORY_HARASSMENT',
-          threshold: 'BLOCK_MEDIUM_AND_ABOVE'
-        }
-      ]
-    });
-
-    // Prepare chat history
-    const messageHistory = conversation.history.map(msg => ({
-      role: msg.role,
-      content: msg.content
-    }));
-
-    // Add system prompt and current message
-    const chat = generativeModel.startChat({
-      context: getSystemPrompt(conversation.userProfile),
-      examples: [
-        {
-          input: "I can't remember what we talked about last time.",
-          output: "That's okay! We were chatting about your garden and those beautiful roses you planted. Would you like to tell me more about your garden?"
+          threshold: 'OFF',
         }
       ],
-      messages: messageHistory
     });
 
-    // Generate response
-    const result = await chat.sendMessage(text);
-    const response = result.response;
+    const chat = generativeModel.startChat({
+      context: getSystemPrompt(conversation.userProfile)
+    });
+
+    const streamResult = await chat.sendMessageStream(text);
+    const response = await streamResult.response;
+    const responseText = response.candidates[0].content.parts[0].text;
 
     // Update conversation history
     conversation.history.push(
       { role: 'user', content: text },
-      { role: 'assistant', content: response.text() }
+      { role: 'assistant', content: responseText }
     );
 
     // Keep history at a reasonable size
@@ -151,7 +148,7 @@ app.post('/api/conversation', async (req, res) => {
 
     res.json({
       success: true,
-      response: response.text(),
+      response: responseText,
       conversationId: userId
     });
 
@@ -165,9 +162,10 @@ app.post('/api/conversation', async (req, res) => {
   }
 });
 
+// Profile update endpoint
 app.post('/api/user/profile', (req, res) => {
   try {
-    console.log('Received profile update:', req.body); // Debug log
+    console.log('Received profile update:', req.body);
     const { userId, profile } = req.body;
     
     if (!userId || !profile) {
@@ -215,15 +213,15 @@ app.use((req, res) => {
   });
 });
 
-// Start server with detailed logging
+// Start server
 app.listen(port, '0.0.0.0', () => {
   console.log(`Server running on port ${port}`);
   console.log('Available routes:');
-  console.log('  GET  /');
   console.log('  GET  /api/health');
   console.log('  POST /api/conversation');
   console.log('  POST /api/user/profile');
   console.log('Environment:');
-  console.log('  Vertex AI:', process.env.GOOGLE_CLOUD_PROJECT ? 'Configured' : 'Not configured');
+  console.log('  Project:', process.env.GOOGLE_CLOUD_PROJECT);
+  console.log('  Location:', process.env.GOOGLE_CLOUD_LOCATION);
   console.log('  Port:', port);
 });
