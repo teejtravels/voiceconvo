@@ -1,0 +1,17 @@
+services:
+  xtts-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: xtts-server
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./voices:/app/voices
+      - ./audio:/app/audio
+    environment:
+      - CUDA_VISIBLE_DEVICES=''  # CPU-only mode for development
+    deploy:
+      resources:
+        limits:
+          memory: 4G
