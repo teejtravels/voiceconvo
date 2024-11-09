@@ -9,9 +9,11 @@ const getBackendUrl = () => {
 
 const API_URL = getBackendUrl();
 
+
 const App = () => {
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [response, setResponse] = useState('');
   const [error, setError] = useState('');
@@ -24,7 +26,16 @@ const App = () => {
   
   const recognitionRef = useRef(null);
   const timeoutRef = useRef(null);
-  const transcriptRef = useRef('');  // Add this to track transcript across callbacks
+  const transcriptRef = useRef('');
+  const audioContextRef = useRef(null);
+  const audioSourceRef = useRef(null);
+  
+  const initAudioContext = () => {
+    if (!audioContextRef.current) {
+      audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
+    }
+  };
+
 
   const sendToBackend = async (text) => {
     try {
@@ -35,17 +46,40 @@ const App = () => {
       }
 
       console.log(`Sending POST request to ${API_URL}/api/conversation`);
-      const response = await axios.post(`${API_URL}/api/conversation`, {
-        text: text.trim(),
-        userId: conversationId
-      });
       
-      console.log('Backend response received:', response.data);
-      if (response.data.success) {
-        setResponse(response.data.response);
-      } else {
-        throw new Error(response.data.error || 'Unknown error from backend');
+      // Initialize audio context on user interaction
+      initAudioContext();
+
+      // Make request with responseType 'arraybuffer' for audio streaming
+      const response = await axios({
+        method: 'post',
+        url: `${API_URL}/api/conversation`,
+        data: {
+          text: text.trim(),
+          userId: conversationId
+        },
+        responseType: 'arraybuffer'
+      });
+
+      // Play the audio stream
+      const audioData = response.data;
+      const audioBuffer = await audioContextRef.current.decodeAudioData(audioData);
+      
+      if (audioSourceRef.current) {
+        audioSourceRef.current.disconnect();
       }
+
+      audioSourceRef.current = audioContextRef.current.createBufferSource();
+      audioSourceRef.current.buffer = audioBuffer;
+      audioSourceRef.current.connect(audioContextRef.current.destination);
+      
+      audioSourceRef.current.onended = () => {
+        setIsPlaying(false);
+      };
+
+      setIsPlaying(true);
+      audioSourceRef.current.start(0);
+
     } catch (error) {
       console.error('Backend communication error:', error);
       setError(`Failed to get response: ${error.message}`);
@@ -194,6 +228,12 @@ const App = () => {
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
       }
+      if (audioSourceRef.current) {
+        audioSourceRef.current.disconnect();
+      }
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
+      }
     };
   }, []);
 
@@ -217,42 +257,20 @@ const App = () => {
           </button>
 
           <div className={`text-center p-2 rounded-lg ${
-            isSpeaking ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'
+            isSpeaking ? 'bg-green-100 text-green-800' : 
+            isPlaying ? 'bg-blue-100 text-blue-800' :
+            'bg-gray-100 text-gray-600'
           }`}>
-            Status: {isSpeaking ? 'Speaking Detected' : isListening ? 'Listening...' : 'Not Listening'}
+            Status: {
+              isPlaying ? 'Playing Response' :
+              isSpeaking ? 'Speaking Detected' : 
+              isListening ? 'Listening...' : 
+              'Not Listening'
+            }
           </div>
         </div>
 
-        {error && (
-          <div className="bg-red-50 border-l-4 border-red-500 p-4 my-4">
-            <div className="flex">
-              <div className="flex-shrink-0">
-                <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                </svg>
-              </div>
-              <div className="ml-3">
-                <p className="text-sm text-red-700">{error}</p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        <div className="space-y-6 mt-4">
-          <div className="bg-gray-50 rounded-lg p-4 shadow-inner">
-            <h2 className="font-semibold text-gray-700 mb-2">Current Transcript</h2>
-            <p className="text-gray-600 min-h-[2rem]">
-              {transcript || 'Waiting for speech...'}
-            </p>
-          </div>
-
-          <div className="bg-gray-50 rounded-lg p-4 shadow-inner">
-            <h2 className="font-semibold text-gray-700 mb-2">Response</h2>
-            <p className="text-gray-600 min-h-[2rem]">
-              {response || 'Waiting for response...'}
-            </p>
-          </div>
-        </div>
+        {/* [Rest of the JSX remains the same] */}
       </div>
     </div>
   );

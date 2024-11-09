@@ -1,12 +1,25 @@
 const express = require('express');
 const cors = require('cors');
 const { VertexAI } = require('@google-cloud/vertexai');
+const PlayHT = require('playht');
 const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
 
 const app = express();
 const port = process.env.PORT || 5000;
+
+// Initialize PlayHT
+try {
+  PlayHT.init({
+    apiKey: process.env.PLAYHT_API_KEY,
+    userId: process.env.PLAYHT_USER_ID,
+  });
+  console.log('PlayHT initialized successfully');
+} catch (error) {
+  console.error('PlayHT initialization failed:', error);
+  process.exit(1);
+}
 
 // Initialize Vertex AI with explicit credentials
 let vertexAI;
@@ -33,7 +46,7 @@ try {
 app.use(cors({
   origin: '*',
   methods: ['GET', 'POST'],
-  allowedHeaders: ['Content-Type']
+  allowedHeaders: ['Content-Type', 'Accept-Ranges', 'Content-Range']
 }));
 app.use(express.json());
 
@@ -99,6 +112,7 @@ app.post('/api/conversation', async (req, res) => {
     }
 
     const conversation = getOrCreateConversation(userId);
+    let responseText = '';
 
     const generativeModel = vertexAI.preview.getGenerativeModel({
       model: 'gemini-1.5-flash-002',
@@ -131,34 +145,68 @@ app.post('/api/conversation', async (req, res) => {
       context: getSystemPrompt(conversation.userProfile)
     });
 
+    // Get the complete response first
     const streamResult = await chat.sendMessageStream(text);
     const response = await streamResult.response;
-    const responseText = response.candidates[0].content.parts[0].text;
+    responseText = response.candidates[0].content.parts[0].text;
 
-    // Update conversation history
-    conversation.history.push(
-      { role: 'user', content: text },
-      { role: 'assistant', content: responseText }
-    );
+    console.log('Generating audio for response:', responseText);
 
-    // Keep history at a reasonable size
-    if (conversation.history.length > 20) {
-      conversation.history = conversation.history.slice(-20);
+    // Set headers for streaming
+    res.setHeader('Content-Type', 'audio/mpeg');
+    res.setHeader('Transfer-Encoding', 'chunked');
+
+    try {
+      // Create Play.HT stream from the complete text
+      const stream = await PlayHT.stream(responseText, {
+        voiceId: "s3://voice-cloning-zero-shot/372255b8-fd92-4616-a2bd-2608bef071b9/original/manifest.json",
+        voiceEngine: "PlayHT2.0",
+        quality: "medium",  // Added quality setting
+        outputFormat: "mp3",  // Specify output format
+        speed: 1.0  // Normal speed
+      });
+
+      // Update conversation history before streaming
+      conversation.history.push(
+        { role: 'user', content: text },
+        { role: 'assistant', content: responseText }
+      );
+
+      if (conversation.history.length > 20) {
+        conversation.history = conversation.history.slice(-20);
+      }
+
+      // Pipe the audio stream to the response
+      stream.pipe(res);
+
+      // Handle stream events
+      stream.on('error', (error) => {
+        console.error('PlayHT stream error:', error);
+        if (!res.headersSent) {
+          res.status(500).end();
+        }
+      });
+
+    } catch (streamError) {
+      console.error('PlayHT stream creation error:', streamError);
+      if (!res.headersSent) {
+        res.status(500).json({
+          success: false,
+          error: 'Failed to create audio stream',
+          details: streamError.message
+        });
+      }
     }
-
-    res.json({
-      success: true,
-      response: responseText,
-      conversationId: userId
-    });
 
   } catch (error) {
     console.error('Conversation error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to process conversation',
-      details: error.message
-    });
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        error: 'Failed to process conversation',
+        details: error.message
+      });
+    }
   }
 });
 

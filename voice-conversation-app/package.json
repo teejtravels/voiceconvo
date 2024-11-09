@@ -8,6 +8,10 @@
     "install-all": "npm install && cd frontend && npm install && cd ../backend && npm install"
   },
   "dependencies": {
-    "@google-cloud/vertexai": "^1.9.0"
+    "@google-cloud/vertexai": "^1.9.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.1",
+    "playht": "^0.13.0"
   }
 }
