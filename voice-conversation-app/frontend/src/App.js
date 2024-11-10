@@ -10,6 +10,89 @@ const getBackendUrl = () => {
 const API_URL = getBackendUrl();
 
 
+// This adds the companion avatar
+const CompanionAvatar = ({ 
+  photoUrl, 
+  name, 
+  isSpeaking, 
+  isListening,
+  onPhotoUpload 
+}) => {
+  const [uploadedPhoto, setUploadedPhoto] = useState(photoUrl);
+  const fileInputRef = useRef(null);
+
+  const handleFileChange = async (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      // In production, you'd upload to your storage service here
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setUploadedPhoto(reader.result);
+        if (onPhotoUpload) {
+          onPhotoUpload(file);
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  return (
+    <div className="flex flex-col items-center space-y-4 mb-8">
+      {/* Avatar container with speaking animation */}
+      <div className={`
+        relative w-48 h-48 rounded-full 
+        ${isSpeaking ? 'animate-pulse' : ''}
+        transition-all duration-300
+      `}>
+        {/* Glowing background when speaking */}
+        <div className={`
+          absolute inset-0 rounded-full 
+          ${isSpeaking ? 'bg-green-400 opacity-50' : 'bg-transparent opacity-0'}
+          transition-all duration-300 blur-md
+        `} />
+        
+        {/* Photo upload button and preview */}
+        <div className="relative w-full h-full rounded-full overflow-hidden group">
+          <img 
+            src={uploadedPhoto || "/api/placeholder/192/192"} 
+            alt={name} 
+            className="w-full h-full object-cover rounded-full"
+          />
+          
+          {/* Upload overlay */}
+          <div 
+            onClick={() => fileInputRef.current?.click()}
+            className="absolute inset-0 bg-black bg-opacity-50 opacity-0 
+                       group-hover:opacity-100 transition-opacity duration-200 
+                       flex items-center justify-center cursor-pointer"
+          >
+            <span className="text-white text-sm">Change Photo</span>
+          </div>
+          
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleFileChange}
+            className="hidden"
+          />
+        </div>
+
+        {/* Speaking/Listening indicator */}
+        <div className={`
+          absolute bottom-2 right-2 w-4 h-4 rounded-full
+          transition-all duration-300
+          ${isSpeaking ? 'bg-green-500' : 
+            isListening ? 'bg-blue-500' : 'bg-gray-400'}
+        `} />
+      </div>
+
+      {/* Companion name */}
+      <h2 className="text-xl font-semibold text-gray-800">{name}</h2>
+    </div>
+  );
+};
+
 const App = () => {
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
